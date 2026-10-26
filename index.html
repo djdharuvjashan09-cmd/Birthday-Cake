@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Birthday Cake 🎂</title>
     <link rel="stylesheet" href="style.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -11,45 +11,36 @@
       href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&display=swap"
       rel="stylesheet"
     />
-    <style>
-      #mainTitle {
-        font-size: 32px;
-        font-family: 'Pixelify Sans', sans-serif;
-        margin-bottom: 8px;
-      }
-
-      #subTitle {
-        font-size: 18px;
-        font-family: 'Pixelify Sans', sans-serif;
-        color: #555;
-      }
-    </style>
   </head>
   <body>
-   ```html
-<div class="cake-container">
-  <div class="cake" id="cake"></div>
-</div>
+    <main class="container">
+      <div id="birthdayText">
+        <div id="mainTitle">Happy Birthday, Gargi!</div>
+        <div id="subTitle">Make a wish and blow candles.</div>
+      </div>
 
-<button id="startCelebration">🎉 Start Celebration 🎂</button>
-```
+      <div class="cake-stage">
+        <div class="cake" id="cake" aria-label="Birthday cake"></div>
+      </div>
 
-    </div>
+      <button id="startCelebration" type="button">🎉 Start Celebration 🎂</button>
+      <button id="manualBlow" class="manual-blow" type="button">💨 Blow out candles</button>
+    </main>
 
     <script>
-      // Read URL params
       const params = new URLSearchParams(window.location.search);
       const name = params.get("name") || "Gargi";
-      let candleCount = parseInt(params.get("candles")) || 4;
+      let candleCount = parseInt(params.get("candles"), 10) || 4;
       candleCount = Math.min(Math.max(candleCount, 1), 30);
 
-      const birthdayText = document.getElementById("birthdayText");
-      birthdayText.innerHTML = `
-        <div id="mainTitle">Happy Birthday, ${name}!</div>
-        <div id="subTitle">Make a wish and blow candles.</div>
-      `;
-
+      const mainTitle = document.getElementById("mainTitle");
+      const subTitle = document.getElementById("subTitle");
       const cake = document.getElementById("cake");
+      const startButton = document.getElementById("startCelebration");
+      const manualBlowButton = document.getElementById("manualBlow");
+
+      mainTitle.textContent = `Happy Birthday, ${name}!`;
+      subTitle.textContent = "Make a wish and blow candles.";
 
       const colors = [
         "green-candle",
@@ -57,36 +48,29 @@
         "blue-candle",
         "yellow-candle",
       ];
-      const CAKE_VISUAL_WIDTH = 35;
 
       function createCandles(count) {
         cake.innerHTML = "";
-        const CANDLE_VISUAL_WIDTH = 2;
-        const availableWidth = CAKE_VISUAL_WIDTH;
+
         const candlesPerRow = 6;
-        const rowCount = Math.ceil(count / candlesPerRow);
-        const shiftAmount = 4;
+        const baseLeft = 45;
+        const baseBottom = 18;
+        const colSpacing = 30;
+        const rowSpacing = 24;
 
         for (let i = 0; i < count; i++) {
           const candle = document.createElement("div");
           candle.classList.add("candle");
+
           const colorClass = colors[Math.floor(Math.random() * colors.length)];
           candle.classList.add(colorClass);
 
           const row = Math.floor(i / candlesPerRow);
           const col = i % candlesPerRow;
-          const totalCandlesInRow = Math.min(
-            candlesPerRow,
-            count - row * candlesPerRow
-          );
-          const rowSpacing = availableWidth / (totalCandlesInRow + 1);
+          const rowShift = row % 2 === 0 ? 0 : 10;
 
-          const leftBase = rowSpacing * (col + 1) - CANDLE_VISUAL_WIDTH / 2 + 5;
-          const rowShift = row % 2 === 0 ? 0 : shiftAmount;
-
-          candle.style.position = "absolute";
-          candle.style.top = `${10 + row * 3}px`;
-          candle.style.left = `${leftBase - rowShift + 4}px`;
+          candle.style.left = `${baseLeft + col * colSpacing + rowShift}px`;
+          candle.style.bottom = `${baseBottom + row * rowSpacing}px`;
 
           cake.appendChild(candle);
         }
@@ -94,149 +78,104 @@
 
       createCandles(candleCount);
 
-    ```js
-// === Microphone / Blow Detection ===
+      let candlesBlownOut = false;
+      let analyser = null;
+      let stream = null;
+      let animationFrameId = null;
 
-let candlesBlownOut = false;
+      function blowOutCandles() {
+        if (candlesBlownOut) return;
 
-async function startMicDetection() {
-  const subTitle = document.getElementById("subTitle");
+        candlesBlownOut = true;
+        manualBlowButton.disabled = true;
 
-  try {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      subTitle.textContent =
-        "Microphone unavailable. Open this page using HTTPS.";
-      return;
-    }
+        const candles = document.querySelectorAll(".candle");
+        candles.forEach((candle, index) => {
+          setTimeout(() => {
+            candle.classList.add("blown");
+          }, index * 60 + Math.random() * 120);
+        });
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
-      }
-    });
-
-    const audioContext = new (
-      window.AudioContext || window.webkitAudioContext
-    )();
-
-    await audioContext.resume();
-
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-
-    analyser.fftSize = 2048;
-    source.connect(analyser);
-
-    const samples = new Float32Array(analyser.fftSize);
-
-    subTitle.textContent = "Microphone ready! Blow toward your microphone 💨";
-
-    let loudFrames = 0;
-    let lastBlow = 0;
-
-    function detectBlow() {
-      analyser.getFloatTimeDomainData(samples);
-
-      let sum = 0;
-
-      for (let i = 0; i < samples.length; i++) {
-        sum += samples[i] * samples[i];
-      }
-
-      const rms = Math.sqrt(sum / samples.length);
-
-      // Require several consecutive loud frames to reduce false triggers.
-      if (rms > 0.055) {
-        loudFrames++;
-      } else {
-        loudFrames = 0;
-      }
-
-      if (
-        loudFrames >= 4 &&
-        !candlesBlownOut &&
-        Date.now() - lastBlow > 1500
-      ) {
-        lastBlow = Date.now();
-        blowOutCandles();
-      }
-
-      requestAnimationFrame(detectBlow);
-    }
-
-    detectBlow();
-  } catch (err) {
-    console.error("Microphone error:", err);
-
-    subTitle.textContent =
-      "Microphone unavailable. Use the button to blow out the candles.";
-  }
-}
-
-function blowOutCandles() {
-  if (candlesBlownOut) return;
-
-  candlesBlownOut = true;
-
-  const candles = document.querySelectorAll(".candle");
-
-  candles.forEach((candle) => {
-    setTimeout(() => {
-      candle.classList.add("blown");
-    }, Math.random() * 700);
-  });
-
-  setTimeout(() => {
-    const subTitle = document.getElementById("subTitle");
-
-    if (subTitle) {
-      subTitle.textContent =
-        "HAPPY BIRTHDAY GARRGIYAAAAAAAAAAAAAAA!! 🎉";
-    }
-  }, 1000);
-}
-
-// Add a temporary manual test button.
-const testButton = document.createElement("button");
-
-testButton.textContent = "💨 Blow out candles";
-testButton.style.cssText = `
-  display: block;
-  margin: 20px auto;
-  padding: 12px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  position: relative;
-  z-index: 9999;
-`;
-
-document.querySelector(".container").appendChild(testButton);
-
-testButton.addEventListener("click", blowOutCandles);
-
-```js
-const startButton = document.getElementById("startCelebration");
-
-startButton.addEventListener("click", async () => {
-  startButton.textContent = "🎂 Make a wish!";
-  startButton.disabled = true;
-
-  await startMicDetection();
-});
-```
-
-```
-
-        // Update subTitle after short delay
         setTimeout(() => {
-          const subTitle = document.getElementById("subTitle");
-          subTitle.textContent = `HAPPY BIRTHDAY GARRGIYAAAAAAAAAAAAAAA!! 🎉`;
-        }, 1200);
+          subTitle.textContent = `HAPPY BIRTHDAY ${name.toUpperCase()}! 🎉`;
+        }, 800);
       }
 
-      startMicDetection();
+      async function startMicDetection() {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            subTitle.textContent = "Microphone unavailable. Use the button to blow out the candles.";
+            return;
+          }
+
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = audioContext.createAnalyser();
+          const source = audioContext.createMediaStreamSource(stream);
+          source.connect(analyser);
+          analyser.fftSize = 2048;
+
+          const samples = new Float32Array(analyser.fftSize);
+          let loudFrames = 0;
+          let lastBlow = 0;
+
+          subTitle.textContent = "Microphone ready! Blow toward your microphone 💨";
+
+          function detectBlow() {
+            if (!analyser) return;
+
+            analyser.getFloatTimeDomainData(samples);
+
+            let sum = 0;
+            for (let i = 0; i < samples.length; i++) {
+              sum += samples[i] * samples[i];
+            }
+
+            const rms = Math.sqrt(sum / samples.length);
+
+            if (rms > 0.055) {
+              loudFrames += 1;
+            } else {
+              loudFrames = 0;
+            }
+
+            if (
+              loudFrames >= 4 &&
+              !candlesBlownOut &&
+              Date.now() - lastBlow > 1500
+            ) {
+              lastBlow = Date.now();
+              blowOutCandles();
+              return;
+            }
+
+            animationFrameId = requestAnimationFrame(detectBlow);
+          }
+
+          detectBlow();
+        } catch (error) {
+          console.error("Microphone error:", error);
+          subTitle.textContent = "Microphone unavailable. Use the button to blow out the candles.";
+          startButton.disabled = false;
+        }
+      }
+
+      startButton.addEventListener("click", async () => {
+        startButton.textContent = "🎂 Make a wish!";
+        startButton.disabled = true;
+        await startMicDetection();
+      });
+
+      manualBlowButton.addEventListener("click", () => {
+        blowOutCandles();
+      });
     </script>
   </body>
 </html>
