@@ -91,78 +91,136 @@
 
       createCandles(candleCount);
 
-      // === Microphone / Blow Detection ===
-      async function startMicDetection() {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-          });
-          const audioContext = new (window.AudioContext ||
-            window.webkitAudioContext)();
-          const source = audioContext.createMediaStreamSource(stream);
-          const analyser = audioContext.createAnalyser();
-          analyser.fftSize = 512;
+    ```js
+// === Microphone / Blow Detection ===
 
-          source.connect(analyser);
+let candlesBlownOut = false;
 
-          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+async function startMicDetection() {
+  const subTitle = document.getElementById("subTitle");
 
-          let blown = false;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      subTitle.textContent =
+        "Microphone unavailable. Open this page using HTTPS.";
+      return;
+    }
 
-          function detectBlow() {
-            analyser.getByteFrequencyData(dataArray);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
 
-            let highFreqSum = 0;
-            let lowFreqSum = 0;
+    const audioContext = new (
+      window.AudioContext || window.webkitAudioContext
+    )();
 
-            const midpoint = dataArray.length / 2;
+    await audioContext.resume();
 
-            for (let i = 0; i < dataArray.length; i++) {
-              if (i < midpoint) {
-                lowFreqSum += dataArray[i];
-              } else {
-                highFreqSum += dataArray[i];
-              }
-            }
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
 
-            const highAvg = highFreqSum / (dataArray.length / 2);
-            const lowAvg = lowFreqSum / (dataArray.length / 2);
+    analyser.fftSize = 2048;
+    source.connect(analyser);
 
-            const ratio = highAvg / (lowAvg + 1);
+    const samples = new Float32Array(analyser.fftSize);
 
-            const BLOW_RATIO_THRESHOLD = 0.5;
+    subTitle.textContent = "Microphone ready! Blow toward your microphone 💨";
 
-            if (ratio > BLOW_RATIO_THRESHOLD && !blown) {
-              blown = true;
-              blowOutCandles();
-            }
+    let loudFrames = 0;
+    let lastBlow = 0;
 
-            requestAnimationFrame(detectBlow);
-          }
+    function detectBlow() {
+      analyser.getFloatTimeDomainData(samples);
 
-          detectBlow();
-        } catch (err) {
-          console.error("Mic access error:", err);
-        }
+      let sum = 0;
+
+      for (let i = 0; i < samples.length; i++) {
+        sum += samples[i] * samples[i];
       }
 
-      function blowOutCandles() {
-        const candles = document.querySelectorAll(".candle");
-        candles.forEach((candle) => {
-          const delay = Math.random() * 1000;
-          setTimeout(() => {
-            colors.forEach((color) => {
-              if (candle.classList.contains(color)) {
-                candle.classList.add("blown");
-              }
-            });
-          }, delay);
-        });
+      const rms = Math.sqrt(sum / samples.length);
+
+      // Require several consecutive loud frames to reduce false triggers.
+      if (rms > 0.055) {
+        loudFrames++;
+      } else {
+        loudFrames = 0;
+      }
+
+      if (
+        loudFrames >= 4 &&
+        !candlesBlownOut &&
+        Date.now() - lastBlow > 1500
+      ) {
+        lastBlow = Date.now();
+        blowOutCandles();
+      }
+
+      requestAnimationFrame(detectBlow);
+    }
+
+    detectBlow();
+  } catch (err) {
+    console.error("Microphone error:", err);
+
+    subTitle.textContent =
+      "Microphone unavailable. Use the button to blow out the candles.";
+  }
+}
+
+function blowOutCandles() {
+  if (candlesBlownOut) return;
+
+  candlesBlownOut = true;
+
+  const candles = document.querySelectorAll(".candle");
+
+  candles.forEach((candle) => {
+    setTimeout(() => {
+      candle.classList.add("blown");
+    }, Math.random() * 700);
+  });
+
+  setTimeout(() => {
+    const subTitle = document.getElementById("subTitle");
+
+    if (subTitle) {
+      subTitle.textContent =
+        "HAPPY BIRTHDAY GARRGIYAAAAAAAAAAAAAAA!! 🎉";
+    }
+  }, 1000);
+}
+
+// Add a temporary manual test button.
+const testButton = document.createElement("button");
+
+testButton.textContent = "💨 Blow out candles";
+testButton.style.cssText = `
+  display: block;
+  margin: 20px auto;
+  padding: 12px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  position: relative;
+  z-index: 9999;
+`;
+
+document.querySelector(".container").appendChild(testButton);
+
+testButton.addEventListener("click", blowOutCandles);
+
+// Start microphone detection.
+startMicDetection();
+```
 
         // Update subTitle after short delay
         setTimeout(() => {
           const subTitle = document.getElementById("subTitle");
-          subTitle.textContent = `HAPPY BIRTHDAY GAGIYAAAAAAAAAAAAAAA!! 🎉`;
+          subTitle.textContent = `HAPPY BIRTHDAY GARRGIYAAAAAAAAAAAAAAA!! 🎉`;
         }, 1200);
       }
 
