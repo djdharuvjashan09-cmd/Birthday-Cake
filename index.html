@@ -216,8 +216,17 @@ document.querySelector(".container").appendChild(testButton);
 
 testButton.addEventListener("click", blowOutCandles);
 
-// Start microphone detection.
-startMicDetection();
+```js
+const startButton = document.getElementById("startCelebration");
+
+startButton.addEventListener("click", async () => {
+  startButton.textContent = "🎂 Make a wish!";
+  startButton.disabled = true;
+
+  await startMicDetection();
+});
+```
+
 ```
 
         // Update subTitle after short delay
